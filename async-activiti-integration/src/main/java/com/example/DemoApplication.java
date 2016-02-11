@@ -1,11 +1,10 @@
 package com.example;
 
 import org.activiti.engine.ProcessEngine;
+import org.activiti.engine.delegate.DelegateExecution;
 import org.activiti.engine.impl.bpmn.behavior.ReceiveTaskActivityBehavior;
-import org.activiti.engine.impl.pvm.delegate.ActivityBehavior;
-import org.activiti.engine.impl.pvm.delegate.ActivityExecution;
+import org.activiti.engine.impl.delegate.ActivityBehavior;
 import org.activiti.engine.runtime.ProcessInstance;
-import org.activiti.spring.integration.Activiti;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,7 +39,9 @@ public class DemoApplication {
 		return new ReceiveTaskActivityBehavior() {
 
 			@Override
-			public void execute(ActivityExecution execution) throws Exception {
+			public void execute(DelegateExecution execution) {
+
+				log.info("Entered the gateway. Execution id is " + execution.getId());
 
 				Message<?> executionMessage = MessageBuilder
 						.withPayload(execution)
@@ -56,7 +57,7 @@ public class DemoApplication {
 	IntegrationFlow requestsFlow(MessageChannels channels) {
 		return IntegrationFlows.from(channels.requests())
 				.handle(msg -> msg.getHeaders().entrySet()
-						.forEach(e -> log.info(e.getKey() + '=' + e.getValue())))
+						.forEach(e -> log.info("[Request channel] Message received " + e.getKey() + '=' + e.getValue())))
 				.get();
 	}
 
@@ -64,7 +65,7 @@ public class DemoApplication {
 	IntegrationFlow repliesFlow(MessageChannels channels,
 								ProcessEngine engine) {
 		return IntegrationFlows.from(channels.replies())
-				.handle(msg -> engine.getRuntimeService().signal(
+				.handle(msg -> engine.getRuntimeService().trigger(
 						String.class.cast(msg.getHeaders().get("executionId"))))
 				.get();
 	}
@@ -95,7 +96,12 @@ class ProcessStartingRestController {
 	Map<String, String> launch() {
 		ProcessInstance asyncProcess = this.processEngine.getRuntimeService()
 				.startProcessInstanceByKey("asyncProcess");
-		return Collections.singletonMap("executionId", asyncProcess.getId());
+		String executionId = processEngine.getRuntimeService()
+				.createExecutionQuery()
+				.activityId("sigw")
+				.singleResult()
+				.getId();
+		return Collections.singletonMap("executionId", executionId);
 	}
 }
 
